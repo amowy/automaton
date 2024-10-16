@@ -1,0 +1,25 @@
+digraph G {
+    ranksep=0.5;
+    nodesep=0.5;
+    rankdir=LR;
+    node [shape="circle", fontsize="16"];
+    fontsize="10";
+    compound=true;
+
+    ia [shape=point, style=invis];
+    e [shape=doublecircle];
+    d [shape=doublecircle];
+
+    ia -> a;
+    b -> c [label="1"];
+    a -> b [label="1"];
+    b -> d [label="0"];
+    d -> d [label="0"];
+    c -> b [label="1"];
+    a -> sink [label="0"];
+    d -> sink [label="1"];
+    e -> sink [label="1"];
+    sink -> sink [label="0, 1"];
+    c -> e [label="0"];
+    e -> e [label="0"];
+}
