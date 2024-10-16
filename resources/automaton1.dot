@@ -11,7 +11,7 @@ digraph G {
 
     ia -> a;
     b -> b [label="1"];
-    a -> b [label="1"];
-    b -> c [label="0"];
     c -> c [label="0"];
+    b -> c [label="0"];
+    a -> b [label="1"];
 }

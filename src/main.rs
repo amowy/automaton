@@ -2,9 +2,9 @@ use std::fs::File;
 use std::io::{self, BufRead};
 use std::path::Path;
 use std::fs::write;
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 
-
+#[derive(Clone)]
 struct Automaton {
     states: HashSet<String>,
     alphabet: HashSet<String>,
@@ -110,6 +110,114 @@ impl Automaton {
             self.transitions.insert((sink_state.clone(), symbol.clone()), sink_state.clone());
         }
     }
+
+    fn remove_unreachable_states(&mut self) {
+        let mut reachable_nodes: HashSet<String> = HashSet::new();
+        let mut productive_nodes: Vec<String> = Vec::new();
+        let mut visited: HashSet<String> = HashSet::new();
+        let mut queue = VecDeque::new();
+
+        for node in &self.states {
+            queue.push_back(node.clone());
+            visited.insert(node.clone());
+        }
+
+        while let Some(current_node) = queue.pop_front() {
+            reachable_nodes.insert(current_node.clone());
+            for edge in &self.transitions {
+                if edge.0.0 == current_node && visited.insert(edge.1.clone()) {
+                    queue.push_back(edge.1.clone());
+                }
+            }
+        }
+        for terminal_node in &self.terminal_states {
+            queue.push_back(terminal_node.clone());
+            visited.insert(terminal_node.clone());
+        }
+    
+        while let Some(current_node) = queue.pop_front() {
+            if reachable_nodes.contains(&current_node) {
+                productive_nodes.push(current_node.clone());
+            }
+            for ((from, _), to) in &self.transitions {
+                if to == &current_node && visited.insert(from.clone()) {
+                    queue.push_back(from.clone());
+                }
+            }
+        }
+
+        self.states = reachable_nodes.clone();
+        self.terminal_states = productive_nodes.into_iter().collect();
+        self.transitions.retain(|(from, _), _| reachable_nodes.contains(from));
+    }
+
+    pub fn minimize(&self) -> Automaton {
+        /*
+        makes funny errors
+        */
+        let mut partition: HashMap<Vec<String>, HashSet<String>> = HashMap::new();
+        let non_terminal_states: HashSet<String> = self.states.difference(&self.terminal_states).cloned().collect();
+        partition.insert(non_terminal_states.iter().cloned().collect::<Vec<String>>(), HashSet::new());
+        partition.insert(self.terminal_states.iter().cloned().collect::<Vec<String>>(), HashSet::new());
+
+        let mut worklist: Vec<HashSet<String>> = partition.values().cloned().collect();
+
+        while let Some(block) = worklist.pop() {
+            for symbol in &self.alphabet {
+                let mut transitions: HashMap<Vec<String>, HashSet<String>> = HashMap::new();
+                for state in &block {
+                    if let Some(next_state) = self.transitions.get(&(state.clone(), symbol.clone())) {
+                        let block_key = partition.keys().find(|&key| key.contains(next_state)).unwrap();
+                        transitions.entry(block_key.clone()).or_insert_with(HashSet::new).insert(state.clone());
+                    }
+                }
+
+                for (key, states) in transitions {
+                    if states.len() < block.len() {
+                        let new_block: HashSet<String> = states.into_iter().collect();
+                        let remaining_states: HashSet<String> = block.difference(&new_block).cloned().collect();
+                        partition.insert(new_block.iter().cloned().collect::<Vec<String>>(), HashSet::new());
+                        partition.insert(remaining_states.iter().cloned().collect::<Vec<String>>(), HashSet::new());
+                    
+                        worklist.push(new_block.iter().cloned().collect());
+                        worklist.push(remaining_states.iter().cloned().collect());
+                    }
+                }
+
+            }
+        }
+
+        let mut minimized = Automaton::new();
+        let mut state_mapping: HashMap<String, String> = HashMap::new();
+
+        for (block, _) in &partition {
+            let representative = block.iter().next().unwrap();
+            minimized.states.insert(representative.clone());
+            if self.start_states.contains(representative) {
+                minimized.start_states.insert(representative.clone());
+            }
+            if self.terminal_states.contains(representative) {
+                minimized.terminal_states.insert(representative.clone());
+            }
+            state_mapping.insert(representative.clone(), representative.clone());
+
+            for state in block {
+                for symbol in &self.alphabet {
+                    if let Some(next_state) = self.transitions.get(&(state.clone(), symbol.clone())) {
+                        let next_block = partition.keys().find(|&key| key.contains(next_state)).unwrap();
+                        let next_representative = next_block.iter().next().unwrap();
+                        minimized.transitions.insert((representative.clone(), symbol.clone()), next_representative.clone());
+                    }
+                }
+            }
+        }
+
+        minimized
+    }
+
+    fn is_minimized(&self) -> bool {
+        *self == self.minimize()
+    }
 }
 
 impl PartialEq for Automaton {
@@ -160,6 +268,12 @@ fn main() -> io::Result<()> {
         println!("ekvivalens");
     } else {
         println!("nem ekvivalens");
+    }
+    if false {
+        println!("minimized");
+    } else {
+        println!("not minimized");
+        automaton2.minimize().write_dot_code("resources/auto2_minimized")?;
     }
     Ok(())
 }
