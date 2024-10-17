@@ -8,14 +8,9 @@ digraph G {
 
     ia [shape=point, style=invis];
     d [shape=doublecircle];
-    e [shape=doublecircle];
 
     ia -> a;
-    c -> e [label="0"];
-    a -> b [label="1"];
-    c -> b [label="1"];
-    b -> c [label="1"];
-    b -> d [label="0"];
-    e -> e [label="0"];
     d -> d [label="0"];
+    a -> d [label="0"];
+    a -> a [label="1"];
 }

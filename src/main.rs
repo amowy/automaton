@@ -3,8 +3,9 @@ use std::io::{self, BufRead};
 use std::path::Path;
 use std::fs::write;
 use std::collections::{HashMap, HashSet, VecDeque};
+use std::fmt;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct Automaton {
     states: HashSet<String>,
     alphabet: HashSet<String>,
@@ -91,7 +92,7 @@ impl Automaton {
         Ok(())
     }
 
-    fn to_complete_automaton(&mut self) {
+    fn to_complete_automaton(&mut self) -> Automaton{
         let sink_state = "sink".to_string();
 
         if !self.states.contains(&sink_state) {
@@ -109,6 +110,7 @@ impl Automaton {
         for symbol in &self.alphabet {
             self.transitions.insert((sink_state.clone(), symbol.clone()), sink_state.clone());
         }
+        self.clone()
     }
 
     fn remove_unreachable_states(&mut self) {
@@ -190,6 +192,8 @@ impl Automaton {
         let mut minimized = Automaton::new();
         let mut state_mapping: HashMap<String, String> = HashMap::new();
 
+
+        minimized.alphabet = self.alphabet.clone();
         for (block, _) in &partition {
             let representative = block.iter().next().unwrap();
             minimized.states.insert(representative.clone());
@@ -212,6 +216,91 @@ impl Automaton {
             }
         }
 
+        if minimized.start_states.is_empty() {
+            if let Some(first_representative) = minimized.states.difference(&minimized.terminal_states).cloned().next() {
+                minimized.start_states.insert(first_representative.clone());
+            }
+        }    
+
+        minimized
+    }
+
+    pub fn minimize_table_method(&self) -> Automaton {
+        let mut minimized = Automaton::new();
+        minimized.alphabet = self.alphabet.clone();
+
+        let mut distinguishable = HashMap::new();
+        let state_list: Vec<String> = self.states.iter().cloned().collect();
+
+        for i in 0..state_list.len() {
+            for j in 0..i {
+                let s1 = &state_list[i];
+                let s2 = &state_list[j];
+                let is_distinguishable = (self.terminal_states.contains(s1) && !self.terminal_states.contains(s2))
+                    || (!self.terminal_states.contains(s1) && self.terminal_states.contains(s2));
+                distinguishable.insert((s1.clone(), s2.clone()), is_distinguishable);
+            }
+        }
+
+        let mut changes = true;
+        while changes {
+            changes = false;
+            for i in 0..state_list.len() {
+                for j in 0..i {
+                    let s1 = &state_list[i];
+                    let s2 = &state_list[j];
+
+                    if !distinguishable[&(s1.clone(), s2.clone())] {
+                        for symbol in &self.alphabet {
+                            let t1 = self.transitions.get(&(s1.clone(), symbol.clone()));
+                            let t2 = self.transitions.get(&(s2.clone(), symbol.clone()));
+                            if let (Some(ns1), Some(ns2)) = (t1, t2) {
+                                let (ns1, ns2) = if ns1 < ns2 {
+                                    (ns1, ns2)
+                                } else {
+                                    (ns2, ns1)
+                                };
+                                if distinguishable.get(&(ns1.clone(), ns2.clone())) == Some(&true) {
+                                    distinguishable.insert((s1.clone(), s2.clone()), true);
+                                    changes = true;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        let mut state_mapping: HashMap<String, String> = HashMap::new();
+        for i in 0..state_list.len() {
+            let s1 = &state_list[i];
+            for j in 0..i {
+                let s2 = &state_list[j];
+                if !distinguishable[&(s1.clone(), s2.clone())] {
+                    let representative = state_mapping.get(s1).unwrap_or(s1).clone();
+                    state_mapping.insert(s2.clone(), representative.clone());
+                }
+            }
+            state_mapping.entry(s1.clone()).or_insert(s1.clone());
+        }
+
+        for (state, repr) in &state_mapping {
+            minimized.states.insert(repr.clone());
+            if self.start_states.contains(state) {
+                minimized.start_states.insert(repr.clone());
+            }
+            if self.terminal_states.contains(state) {
+                minimized.terminal_states.insert(repr.clone());
+            }
+        }
+
+        for ((from, symbol), to) in &self.transitions {
+            let from_repr = state_mapping.get(from).unwrap();
+            let to_repr = state_mapping.get(to).unwrap();
+            minimized.transitions.insert((from_repr.clone(), symbol.clone()), to_repr.clone());
+        }
+
         minimized
     }
 
@@ -220,11 +309,22 @@ impl Automaton {
     }
 }
 
+impl fmt::Display for Automaton {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "States: {:?}\nAlphabet: {:?}\nStart States: {:?}\nTerminal States: {:?}\nTransitions: {:?}", 
+               self.states, self.alphabet, self.start_states, self.terminal_states, self.transitions)
+    }
+}
+
 impl PartialEq for Automaton {
     fn eq(&self, other: &Self) -> bool {
-        let mut table: Vec<(String, String)> = vec![(self.start_states.iter().next().unwrap().clone(), 
-                                                    other.start_states.iter().next().unwrap().clone())];
-        if self.terminal_states.contains(&table[0].0) != other.terminal_states.contains(&table[0].1) {
+        let mut self_copy = self.clone();
+        let mut other_copy = other.clone();
+        self_copy.to_complete_automaton();
+        other_copy.to_complete_automaton();
+        let mut table: Vec<(String, String)> = vec![(self_copy.start_states.iter().next().unwrap().clone(), 
+                                                    other_copy.start_states.iter().next().unwrap().clone())];
+        if self_copy.terminal_states.contains(&table[0].0) != other_copy.terminal_states.contains(&table[0].1) {
             return false;
         }
         let mut table_index = 0;
@@ -232,11 +332,11 @@ impl PartialEq for Automaton {
             
             let (q, q_prime) = &table[table_index].clone();
             table_index += 1;
-            for a in &self.alphabet {
-                let next_q = self.transitions.get(&(q.clone(), a.clone()));
-                let next_q_prime = other.transitions.get(&(q_prime.clone(), a.clone()));
+            for a in &self_copy.alphabet {
+                let next_q = self_copy.transitions.get(&(q.clone(), a.clone()));
+                let next_q_prime = other_copy.transitions.get(&(q_prime.clone(), a.clone()));
                 if let (Some(next_q), Some(next_q_prime)) = (next_q, next_q_prime) {
-                    if self.terminal_states.contains(next_q) != other.terminal_states.contains(next_q_prime) {
+                    if self_copy.terminal_states.contains(next_q) != other_copy.terminal_states.contains(next_q_prime) {
                         return false;
                     }
 
@@ -253,15 +353,17 @@ impl PartialEq for Automaton {
     }
 }
 
+
 fn main() -> io::Result<()> {
+    /*
     let mut automaton1 = Automaton::new();
     let mut automaton2 = Automaton::new();
     automaton1.build_from_file("resources/form_I.B.1_a1.txt").expect("nem sikerult a filet olvasni");
     automaton2.build_from_file("resources/form_I.B.1_a2.txt").expect("nem sikerult a filet olvasni");
     automaton1.write_dot_code("resources/automaton1.dot").expect("couldnt build dot file");
     automaton2.write_dot_code("resources/automaton2.dot").expect("couldnt build dot file");
-    automaton1.to_complete_automaton();
-    automaton2.to_complete_automaton();
+    //automaton1.to_complete_automaton();
+    //automaton2.to_complete_automaton();
     automaton1.write_dot_code("resources/automaton1_complete.dot").expect("couldnt build dot file");
     automaton2.write_dot_code("resources/automaton2_complete.dot").expect("couldnt build dot file");
     if automaton1 == automaton2{
@@ -269,11 +371,31 @@ fn main() -> io::Result<()> {
     } else {
         println!("nem ekvivalens");
     }
-    if false {
+    if automaton2.is_minimized() {
         println!("minimized");
     } else {
         println!("not minimized");
-        automaton2.minimize().write_dot_code("resources/auto2_minimized")?;
+        //automaton2.minimize().write_dot_code("resources/auto2_minimized.dot")?;
+    }
+    let mut minimize = automaton2.minimize();
+    if minimize.is_minimized() {
+        println!("legalabb ez megy");
+    }
+    minimize.write_dot_code("resources/auto2_minimized.dot")?;
+    if minimize == automaton2 {
+        println!("megy minden :D {:?}", automaton2);
+    } 
+    */
+    let mut automaton2 = Automaton::new();
+    automaton2.build_from_file("resources/form_I.B.1_a2.txt").expect("nem sikerult a filet olvasni");
+    automaton2.write_dot_code("resources/automaton2_complete.dot").expect("couldnt build dot file");
+    let minimize = automaton2.minimize();
+    let mut minimize2 = automaton2.minimize_table_method();
+    minimize.write_dot_code("resources/auto2_minimized.dot")?;
+    minimize2.write_dot_code("resources/auto2_minimized2.dot")?;
+    minimize2.to_complete_automaton().write_dot_code("resources/auto2_minimized2_comp.dot")?;
+    if minimize2.to_complete_automaton() == automaton2.to_complete_automaton()  {
+        println!("pls");
     }
     Ok(())
 }

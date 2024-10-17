@@ -1,0 +1,14 @@
+digraph G {
+    ranksep=0.5;
+    nodesep=0.5;
+    rankdir=LR;
+    node [shape="circle", fontsize="16"];
+    fontsize="10";
+    compound=true;
+
+    e [shape=doublecircle];
+
+    e -> e [label="0"];
+    c -> c [label="1"];
+    c -> e [label="0"];
+}

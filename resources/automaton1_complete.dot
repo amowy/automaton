@@ -10,11 +10,8 @@ digraph G {
     c [shape=doublecircle];
 
     ia -> a;
-    a -> b [label="1"];
-    c -> c [label="0"];
-    c -> sink [label="1"];
-    sink -> sink [label="1, 0"];
-    a -> sink [label="0"];
     b -> c [label="0"];
+    a -> b [label="1"];
     b -> b [label="1"];
+    c -> c [label="0"];
 }
