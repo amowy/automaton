@@ -11,11 +11,11 @@ digraph G {
     d [shape=doublecircle];
 
     ia -> a;
-    c -> b [label="1"];
-    c -> e [label="0"];
     e -> e [label="0"];
-    b -> c [label="1"];
     a -> b [label="1"];
     b -> d [label="0"];
+    c -> b [label="1"];
+    c -> e [label="0"];
     d -> d [label="0"];
+    b -> c [label="1"];
 }

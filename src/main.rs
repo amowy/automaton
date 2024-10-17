@@ -154,47 +154,58 @@ impl Automaton {
     }
 
     pub fn minimize(&self) -> Automaton {
-        /*
-        makes funny errors
-        */
-        let mut partition: HashMap<Vec<String>, HashSet<String>> = HashMap::new();
-        let non_terminal_states: HashSet<String> = self.states.difference(&self.terminal_states).cloned().collect();
-        partition.insert(non_terminal_states.iter().cloned().collect::<Vec<String>>(), HashSet::new());
-        partition.insert(self.terminal_states.iter().cloned().collect::<Vec<String>>(), HashSet::new());
+        let mut partition: Vec<HashSet<String>> = vec![
+            self.terminal_states.clone(), 
+            self.states.difference(&self.terminal_states).cloned().collect()
+        ];
+    
+        let mut worklist: Vec<HashSet<String>> = partition.clone();
+    
+        while !worklist.is_empty() {
+            let A = worklist.remove(0);
+    
+            for c in &self.alphabet {
+                let mut X: HashSet<String> = self.states.iter()
+                    .filter(|&state| self.transitions.get(&(state.clone(), c.clone())).map_or(false, |next| A.contains(next)))
+                    .cloned()
+                    .collect();
 
-        let mut worklist: Vec<HashSet<String>> = partition.values().cloned().collect();
-
-        while let Some(block) = worklist.pop() {
-            for symbol in &self.alphabet {
-                let mut transitions: HashMap<Vec<String>, HashSet<String>> = HashMap::new();
-                for state in &block {
-                    if let Some(next_state) = self.transitions.get(&(state.clone(), symbol.clone())) {
-                        let block_key = partition.keys().find(|&key| key.contains(next_state)).unwrap();
-                        transitions.entry(block_key.clone()).or_insert_with(HashSet::new).insert(state.clone());
+                let mut new_partitions = Vec::new();
+    
+                for Y in partition.iter() {
+                    if !Y.is_disjoint(&X) && !Y.is_disjoint(&(Y.difference(&X).cloned().collect())) {
+                        let intersection = Y.intersection(&X).cloned().collect::<HashSet<String>>();
+                        let difference = Y.difference(&X).cloned().collect::<HashSet<String>>();
+    
+                        new_partitions.push(intersection.clone());
+                        new_partitions.push(difference.clone());
+    
+                        if worklist.contains(Y) {
+                            worklist.retain(|w| w != Y);
+                            worklist.push(intersection.clone());
+                            worklist.push(difference.clone());
+                        } else {
+                            if intersection.clone().len() <= difference.clone().len() {
+                                worklist.push(intersection.clone());
+                            } else {
+                                worklist.push(difference);
+                            }
+                        }
+                    } else {
+                        new_partitions.push(Y.clone());
                     }
                 }
 
-                for (key, states) in transitions {
-                    if states.len() < block.len() {
-                        let new_block: HashSet<String> = states.into_iter().collect();
-                        let remaining_states: HashSet<String> = block.difference(&new_block).cloned().collect();
-                        partition.insert(new_block.iter().cloned().collect::<Vec<String>>(), HashSet::new());
-                        partition.insert(remaining_states.iter().cloned().collect::<Vec<String>>(), HashSet::new());
-                    
-                        worklist.push(new_block.iter().cloned().collect());
-                        worklist.push(remaining_states.iter().cloned().collect());
-                    }
-                }
-
+                partition = new_partitions;
             }
         }
-
+    
         let mut minimized = Automaton::new();
-        let mut state_mapping: HashMap<String, String> = HashMap::new();
-
-
         minimized.alphabet = self.alphabet.clone();
-        for (block, _) in &partition {
+        
+        let mut state_mapping: HashMap<String, String> = HashMap::new();
+    
+        for block in &partition {
             let representative = block.iter().next().unwrap();
             minimized.states.insert(representative.clone());
             if self.start_states.contains(representative) {
@@ -204,106 +215,27 @@ impl Automaton {
                 minimized.terminal_states.insert(representative.clone());
             }
             state_mapping.insert(representative.clone(), representative.clone());
-
+    
             for state in block {
                 for symbol in &self.alphabet {
                     if let Some(next_state) = self.transitions.get(&(state.clone(), symbol.clone())) {
-                        let next_block = partition.keys().find(|&key| key.contains(next_state)).unwrap();
+                        let next_block = partition.iter().find(|b| b.contains(next_state)).unwrap();
                         let next_representative = next_block.iter().next().unwrap();
                         minimized.transitions.insert((representative.clone(), symbol.clone()), next_representative.clone());
                     }
                 }
             }
         }
-
+    
         if minimized.start_states.is_empty() {
             if let Some(first_representative) = minimized.states.difference(&minimized.terminal_states).cloned().next() {
                 minimized.start_states.insert(first_representative.clone());
             }
-        }    
-
+        }
+    
         minimized
     }
-
-    pub fn minimize_table_method(&self) -> Automaton {
-        let mut minimized = Automaton::new();
-        minimized.alphabet = self.alphabet.clone();
-
-        let mut distinguishable = HashMap::new();
-        let state_list: Vec<String> = self.states.iter().cloned().collect();
-
-        for i in 0..state_list.len() {
-            for j in 0..i {
-                let s1 = &state_list[i];
-                let s2 = &state_list[j];
-                let is_distinguishable = (self.terminal_states.contains(s1) && !self.terminal_states.contains(s2))
-                    || (!self.terminal_states.contains(s1) && self.terminal_states.contains(s2));
-                distinguishable.insert((s1.clone(), s2.clone()), is_distinguishable);
-            }
-        }
-
-        let mut changes = true;
-        while changes {
-            changes = false;
-            for i in 0..state_list.len() {
-                for j in 0..i {
-                    let s1 = &state_list[i];
-                    let s2 = &state_list[j];
-
-                    if !distinguishable[&(s1.clone(), s2.clone())] {
-                        for symbol in &self.alphabet {
-                            let t1 = self.transitions.get(&(s1.clone(), symbol.clone()));
-                            let t2 = self.transitions.get(&(s2.clone(), symbol.clone()));
-                            if let (Some(ns1), Some(ns2)) = (t1, t2) {
-                                let (ns1, ns2) = if ns1 < ns2 {
-                                    (ns1, ns2)
-                                } else {
-                                    (ns2, ns1)
-                                };
-                                if distinguishable.get(&(ns1.clone(), ns2.clone())) == Some(&true) {
-                                    distinguishable.insert((s1.clone(), s2.clone()), true);
-                                    changes = true;
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        let mut state_mapping: HashMap<String, String> = HashMap::new();
-        for i in 0..state_list.len() {
-            let s1 = &state_list[i];
-            for j in 0..i {
-                let s2 = &state_list[j];
-                if !distinguishable[&(s1.clone(), s2.clone())] {
-                    let representative = state_mapping.get(s1).unwrap_or(s1).clone();
-                    state_mapping.insert(s2.clone(), representative.clone());
-                }
-            }
-            state_mapping.entry(s1.clone()).or_insert(s1.clone());
-        }
-
-        for (state, repr) in &state_mapping {
-            minimized.states.insert(repr.clone());
-            if self.start_states.contains(state) {
-                minimized.start_states.insert(repr.clone());
-            }
-            if self.terminal_states.contains(state) {
-                minimized.terminal_states.insert(repr.clone());
-            }
-        }
-
-        for ((from, symbol), to) in &self.transitions {
-            let from_repr = state_mapping.get(from).unwrap();
-            let to_repr = state_mapping.get(to).unwrap();
-            minimized.transitions.insert((from_repr.clone(), symbol.clone()), to_repr.clone());
-        }
-
-        minimized
-    }
-
+    
     fn is_minimized(&self) -> bool {
         *self == self.minimize()
     }
@@ -389,9 +321,7 @@ fn main() -> io::Result<()> {
     let mut automaton2 = Automaton::new();
     automaton2.build_from_file("resources/form_I.B.1_a2.txt").expect("nem sikerult a filet olvasni");
     automaton2.write_dot_code("resources/automaton2_complete.dot").expect("couldnt build dot file");
-    let minimize = automaton2.minimize();
-    let mut minimize2 = automaton2.minimize_table_method();
-    minimize.write_dot_code("resources/auto2_minimized.dot")?;
+    let mut minimize2 = automaton2.minimize();
     minimize2.write_dot_code("resources/auto2_minimized2.dot")?;
     minimize2.to_complete_automaton().write_dot_code("resources/auto2_minimized2_comp.dot")?;
     if minimize2.to_complete_automaton() == automaton2.to_complete_automaton()  {

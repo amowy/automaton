@@ -6,11 +6,11 @@ digraph G {
     fontsize="10";
     compound=true;
 
-    ib [shape=point, style=invis];
+    ic [shape=point, style=invis];
     d [shape=doublecircle];
 
-    ib -> b;
-    b -> d [label="0"];
+    ic -> c;
+    c -> d [label="0"];
+    c -> c [label="1"];
     d -> d [label="0"];
-    b -> b [label="1"];
 }
