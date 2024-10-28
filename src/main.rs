@@ -2,8 +2,10 @@ use std::fs::File;
 use std::io::{self, BufRead};
 use std::path::Path;
 use std::fs::write;
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{BTreeSet, HashMap, HashSet, VecDeque};
 use std::fmt;
+use std::iter::FromIterator;
+
 
 #[derive(Clone, Debug)]
 struct Automaton {
@@ -239,6 +241,100 @@ impl Automaton {
     fn is_minimized(&self) -> bool {
         *self == self.minimize()
     }
+
+    #[doc = r"*  Check if an input has more than one transition *"]
+    fn is_deterministic(&self) -> bool {
+        let mut transition_count = HashMap::new();
+
+        for ((state, symbol), _) in &self.transitions {
+            let key = (state.clone(), symbol.clone());
+            let count = transition_count.entry(key).or_insert(0);
+            *count += 1;
+
+            if *count > 1 {
+                return false;
+            }
+        }
+
+        true
+    }
+
+    
+    fn ndfa_to_dfa(&self) -> Automaton {
+        let mut dfa = Automaton::new();
+        dfa.alphabet = self.alphabet.clone();
+
+        // Track processed states and their mappings
+        let mut state_counter = 0;
+        let mut processed_states: Vec<BTreeSet<String>> = Vec::new();
+        let mut state_mapping: HashMap<String, BTreeSet<String>> = HashMap::new();
+        let mut to_process: VecDeque<BTreeSet<String>> = VecDeque::new();
+
+        // Initialize with start states
+        let start_set: BTreeSet<String> = self.start_states.iter().cloned().collect();
+        processed_states.push(start_set.clone());
+        let start_name = format!("q{}", state_counter);
+        state_mapping.insert(start_name.clone(), start_set.clone());
+        dfa.states.insert(start_name.clone());
+        dfa.start_states.insert(start_name);
+        to_process.push_back(start_set);
+
+        // Process states until queue is empty
+        while let Some(current_states) = to_process.pop_front() {
+            let current_name = state_mapping
+                .iter()
+                .find(|(_, set)| **set == current_states)
+                .unwrap()
+                .0
+                .clone();
+
+            // Check if current set contains any terminal states
+            if current_states.iter().any(|s| self.terminal_states.contains(s)) {
+                dfa.terminal_states.insert(current_name.clone());
+            }
+
+            // Process each symbol
+            for symbol in &self.alphabet {
+                // Compute next states
+                let mut next_states = BTreeSet::new();
+                for state in &current_states {
+                    if let Some(next_state) = self.transitions.get(&(state.clone(), symbol.clone())) {
+                        next_states.insert(next_state.clone());
+                    }
+                }
+
+                if !next_states.is_empty() {
+                    let next_name = if !processed_states.contains(&next_states) {
+                        // New state set discovered
+                        state_counter += 1;
+                        let new_name = format!("q{}", state_counter);
+                        processed_states.push(next_states.clone());
+                        state_mapping.insert(new_name.clone(), next_states.clone());
+                        dfa.states.insert(new_name.clone());
+                        to_process.push_back(next_states);
+                        new_name
+                    } else {
+                        // Find existing state name
+                        state_mapping
+                            .iter()
+                            .find(|(_, set)| **set == next_states)
+                            .unwrap()
+                            .0
+                            .clone()
+                    };
+
+                    // Add transition
+                    dfa.transitions.insert(
+                        (current_name.clone(), symbol.clone()),
+                        next_name
+                    );
+                }
+            }
+        }
+
+        dfa
+    }
+    
 }
 
 impl fmt::Display for Automaton {
@@ -284,48 +380,26 @@ impl PartialEq for Automaton {
         true
     }
 }
-
+//ndva->dva:3-aspdf
 
 fn main() -> io::Result<()> {
-    /*
-    let mut automaton1 = Automaton::new();
-    let mut automaton2 = Automaton::new();
-    automaton1.build_from_file("resources/form_I.B.1_a1.txt").expect("nem sikerult a filet olvasni");
-    automaton2.build_from_file("resources/form_I.B.1_a2.txt").expect("nem sikerult a filet olvasni");
-    automaton1.write_dot_code("resources/automaton1.dot").expect("couldnt build dot file");
-    automaton2.write_dot_code("resources/automaton2.dot").expect("couldnt build dot file");
-    //automaton1.to_complete_automaton();
-    //automaton2.to_complete_automaton();
-    automaton1.write_dot_code("resources/automaton1_complete.dot").expect("couldnt build dot file");
-    automaton2.write_dot_code("resources/automaton2_complete.dot").expect("couldnt build dot file");
-    if automaton1 == automaton2{
-        println!("ekvivalens");
-    } else {
-        println!("nem ekvivalens");
+    let mut automaton_1 = Automaton::new();
+
+    automaton_1.build_from_file("resources/test.txt")?;
+    println!("{}",automaton_1);
+    if automaton_1.is_deterministic() {
+        println!("hellyeah");
     }
-    if automaton2.is_minimized() {
-        println!("minimized");
-    } else {
-        println!("not minimized");
-        //automaton2.minimize().write_dot_code("resources/auto2_minimized.dot")?;
+    automaton_1.write_dot_code("b_4_1.dot")?;
+    println!("{}",automaton_1.is_deterministic());
+    let aut2 = automaton_1.ndfa_to_dfa();
+    aut2.write_dot_code("b_4_1_2.dot")?;
+    if automaton_1 == aut2 {
+        println!("jah");
     }
-    let mut minimize = automaton2.minimize();
-    if minimize.is_minimized() {
-        println!("legalabb ez megy");
-    }
-    minimize.write_dot_code("resources/auto2_minimized.dot")?;
-    if minimize == automaton2 {
-        println!("megy minden :D {:?}", automaton2);
-    } 
-    */
-    let mut automaton2 = Automaton::new();
-    automaton2.build_from_file("resources/form_I.B.1_a2.txt").expect("nem sikerult a filet olvasni");
-    automaton2.write_dot_code("resources/automaton2_complete.dot").expect("couldnt build dot file");
-    let mut minimize2 = automaton2.minimize();
-    minimize2.write_dot_code("resources/auto2_minimized2.dot")?;
-    minimize2.to_complete_automaton().write_dot_code("resources/auto2_minimized2_comp.dot")?;
-    if minimize2.to_complete_automaton() == automaton2.to_complete_automaton()  {
-        println!("pls");
-    }
+    //println!("{}\n{}", automaton_1.is_deterministic(), aut2.is_deterministic());
+    
+
+
     Ok(())
 }
