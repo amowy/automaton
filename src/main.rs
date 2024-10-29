@@ -2,16 +2,14 @@ use std::fs::File;
 use std::io::{self, BufRead};
 use std::path::Path;
 use std::fs::write;
-use std::collections::{BTreeSet, HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::fmt;
-use std::iter::FromIterator;
-
 
 #[derive(Clone, Debug)]
 struct Automaton {
     states: HashSet<String>,
     alphabet: HashSet<String>,
-    start_states: HashSet<String>,
+    start_state: String,
     terminal_states: HashSet<String>,
     transitions: HashMap<(String, String), String>,
 }
@@ -21,20 +19,24 @@ impl Automaton {
         Automaton {
             states: HashSet::new(),
             alphabet: HashSet::new(),
-            start_states: HashSet::new(),
+            start_state: String::new(),
             terminal_states: HashSet::new(),
             transitions: HashMap::new(),
         }
     }
 
-    fn build_from_file(&mut self, file_name: &str) ->io::Result<()> {
+    fn build_from_file(&mut self, file_name: &str) -> io::Result<()> {
         let path = Path::new(file_name);
         let file = File::open(&path)?;
-        let lines = io::BufReader::new(file).lines().collect::<Result<Vec<String>, _>>().expect("couldnt read from file");
+        let lines = io::BufReader::new(file).lines().collect::<Result<Vec<String>, _>>().expect("couldn't read from file");
 
         self.states = lines[0].split_whitespace().map(String::from).collect();
         self.alphabet = lines[1].split_whitespace().map(String::from).collect();
-        self.start_states = lines[2].split_whitespace().map(String::from).collect();
+        
+        // Assuming only one start state for DFA
+        let start_states: HashSet<String> = lines[2].split_whitespace().map(String::from).collect();
+        self.start_state = start_states.into_iter().next().expect("No start state provided");
+        
         self.terminal_states = lines[3].split_whitespace().map(String::from).collect();
         self.transitions.clear();
         
@@ -44,6 +46,7 @@ impl Automaton {
                 let from_state = parts[0].clone();
                 let input = parts[1].clone();
                 let to_state = parts[2].clone();
+                
                 self.transitions.insert((from_state, input), to_state);
             }
         }
@@ -56,29 +59,28 @@ impl Automaton {
             "digraph G {\n    ranksep=0.5;\n    nodesep=0.5;\n    rankdir=LR;\n    node [shape=\"circle\", fontsize=\"16\"];\n    fontsize=\"10\";\n    compound=true;\n\n"
         );
 
-        for state in &self.states {
-            if self.start_states.contains(state) {
-                out_dot_code.push_str(&format!("    i{} [shape=point, style=invis];\n", state));
-            }
-        }
+        // Add start state indicator
+        out_dot_code.push_str(&format!("    i{} [shape=point, style=invis];\n", self.start_state));
 
-        for state in &self.states {
-            if self.terminal_states.contains(state) {
-                out_dot_code.push_str(&format!("    {} [shape=doublecircle];\n", state));
-            }
+        // Add terminal states
+        for state in &self.terminal_states {
+            out_dot_code.push_str(&format!("    {} [shape=doublecircle];\n", state));
         }
         out_dot_code.push_str("\n");
 
-        for state in &self.start_states {
-            out_dot_code.push_str(&format!("    i{} -> {};\n", state, state));
-        }
+        // Add start state transition
+        out_dot_code.push_str(&format!("    i{} -> {};\n", self.start_state, self.start_state));
 
+        // Create edge map for combining multiple transitions between same states
         let mut edge_map: HashMap<(&str, &str), Vec<&str>> = HashMap::new();
+        
         for ((from, input), to) in &self.transitions {
-            let key = (from.as_str(), to.as_str());
-            edge_map.entry(key).or_default().push(input.as_str());
+            edge_map.entry((from.as_str(), to.as_str()))
+                   .or_default()
+                   .push(input.as_str());
         }
 
+        // Add transitions
         for ((start, end), labels) in edge_map {
             let label_str = labels.join(", ");
             out_dot_code.push_str(&format!("    {} -> {} [label=\"{}\"];\n", start, end, label_str));
@@ -94,312 +96,211 @@ impl Automaton {
         Ok(())
     }
 
-    fn to_complete_automaton(&mut self) -> Automaton{
+    fn to_complete_automaton(&mut self) -> Automaton {
+        let mut complete_automaton = self.clone();
         let sink_state = "sink".to_string();
-
-        if !self.states.contains(&sink_state) {
-            self.states.insert(sink_state.clone());
+    
+        if !complete_automaton.states.contains(&sink_state) {
+            complete_automaton.states.insert(sink_state.clone());
         }
-
-        for state in self.states.clone() {
-            for symbol in &self.alphabet {
-                if !self.transitions.contains_key(&(state.clone(), symbol.clone())) {
-                    self.transitions.insert((state.clone(), symbol.clone()), sink_state.clone());
+    
+        for state in &complete_automaton.states {
+            for symbol in &complete_automaton.alphabet {
+                let key = (state.clone(), symbol.clone());
+                if !complete_automaton.transitions.contains_key(&key) {
+                    complete_automaton.transitions.insert(key, sink_state.clone());
                 }
             }
         }
-
-        for symbol in &self.alphabet {
-            self.transitions.insert((sink_state.clone(), symbol.clone()), sink_state.clone());
-        }
-        self.clone()
+    
+        complete_automaton
     }
 
     fn remove_unreachable_states(&mut self) {
-        let mut reachable_nodes: HashSet<String> = HashSet::new();
-        let mut productive_nodes: Vec<String> = Vec::new();
-        let mut visited: HashSet<String> = HashSet::new();
+        let mut reachable_states = HashSet::new();
         let mut queue = VecDeque::new();
-
-        for node in &self.states {
-            queue.push_back(node.clone());
-            visited.insert(node.clone());
-        }
-
-        while let Some(current_node) = queue.pop_front() {
-            reachable_nodes.insert(current_node.clone());
-            for edge in &self.transitions {
-                if edge.0.0 == current_node && visited.insert(edge.1.clone()) {
-                    queue.push_back(edge.1.clone());
+    
+        // Start from initial state
+        queue.push_back(self.start_state.clone());
+        reachable_states.insert(self.start_state.clone());
+    
+        // Perform BFS to find all reachable states
+        while let Some(state) = queue.pop_front() {
+            for symbol in &self.alphabet {
+                if let Some(next_state) = self.transitions.get(&(state.clone(), symbol.clone())) {
+                    if reachable_states.insert(next_state.clone()) {
+                        queue.push_back(next_state.clone());
+                    }
                 }
             }
-        }
-        for terminal_node in &self.terminal_states {
-            queue.push_back(terminal_node.clone());
-            visited.insert(terminal_node.clone());
         }
     
-        while let Some(current_node) = queue.pop_front() {
-            if reachable_nodes.contains(&current_node) {
-                productive_nodes.push(current_node.clone());
-            }
-            for ((from, _), to) in &self.transitions {
-                if to == &current_node && visited.insert(from.clone()) {
-                    queue.push_back(from.clone());
-                }
-            }
-        }
-
-        self.states = reachable_nodes.clone();
-        self.terminal_states = productive_nodes.into_iter().collect();
-        self.transitions.retain(|(from, _), _| reachable_nodes.contains(from));
+        // Filter states and transitions
+        self.states.retain(|state| reachable_states.contains(state));
+        self.terminal_states.retain(|state| reachable_states.contains(state));
+        self.transitions.retain(|(from, _), to| 
+            reachable_states.contains(from) && reachable_states.contains(to));
     }
 
-    pub fn minimize(&self) -> Automaton {
+    fn minimize(&self) -> Automaton {
+        // Initial partition: terminal and non-terminal states
         let mut partition: Vec<HashSet<String>> = vec![
-            self.terminal_states.clone(), 
-            self.states.difference(&self.terminal_states).cloned().collect()
+            self.terminal_states.clone(),
+            self.states.difference(&self.terminal_states).cloned().collect(),
         ];
-    
         let mut worklist: Vec<HashSet<String>> = partition.clone();
     
-        while !worklist.is_empty() {
-            let A = worklist.remove(0);
-    
+        while let Some(a) = worklist.pop() {
             for c in &self.alphabet {
-                let mut X: HashSet<String> = self.states.iter()
-                    .filter(|&state| self.transitions.get(&(state.clone(), c.clone())).map_or(false, |next| A.contains(next)))
+                let x: HashSet<String> = self.states.iter()
+                    .filter(|state| {
+                        if let Some(next_state) = self.transitions.get(&(state.to_string(), c.to_string())) {
+                            a.contains(next_state)
+                        } else {
+                            false
+                        }
+                    })
                     .cloned()
                     .collect();
-
-                let mut new_partitions = Vec::new();
     
-                for Y in partition.iter() {
-                    if !Y.is_disjoint(&X) && !Y.is_disjoint(&(Y.difference(&X).cloned().collect())) {
-                        let intersection = Y.intersection(&X).cloned().collect::<HashSet<String>>();
-                        let difference = Y.difference(&X).cloned().collect::<HashSet<String>>();
+                let mut new_partition = Vec::new();
+                for y in &partition {
+                    let intersection: HashSet<_> = y.intersection(&x).cloned().collect();
+                    let difference: HashSet<_> = y.difference(&x).cloned().collect();
     
-                        new_partitions.push(intersection.clone());
-                        new_partitions.push(difference.clone());
-    
-                        if worklist.contains(Y) {
-                            worklist.retain(|w| w != Y);
+                    if !intersection.is_empty() && !difference.is_empty() {
+                        if worklist.contains(y) {
+                            worklist.retain(|w| w != y);
                             worklist.push(intersection.clone());
                             worklist.push(difference.clone());
                         } else {
-                            if intersection.clone().len() <= difference.clone().len() {
+                            if intersection.len() <= difference.len() {
                                 worklist.push(intersection.clone());
                             } else {
-                                worklist.push(difference);
+                                worklist.push(difference.clone());
                             }
                         }
+                        new_partition.push(intersection);
+                        new_partition.push(difference);
                     } else {
-                        new_partitions.push(Y.clone());
+                        new_partition.push(y.clone());
                     }
                 }
-
-                partition = new_partitions;
+                partition = new_partition;
             }
         }
     
+        // Construct minimized automaton
         let mut minimized = Automaton::new();
         minimized.alphabet = self.alphabet.clone();
-        
-        let mut state_mapping: HashMap<String, String> = HashMap::new();
     
+        // Create state mapping
+        let mut state_mapping: HashMap<String, String> = HashMap::new();
         for block in &partition {
-            let representative = block.iter().next().unwrap();
+            let representative = block.iter().next().unwrap().clone();
             minimized.states.insert(representative.clone());
-            if self.start_states.contains(representative) {
-                minimized.start_states.insert(representative.clone());
+            
+            if block.contains(&self.start_state) {
+                minimized.start_state = representative.clone();
             }
-            if self.terminal_states.contains(representative) {
+            
+            if !block.is_disjoint(&self.terminal_states) {
                 minimized.terminal_states.insert(representative.clone());
             }
-            state_mapping.insert(representative.clone(), representative.clone());
     
             for state in block {
-                for symbol in &self.alphabet {
-                    if let Some(next_state) = self.transitions.get(&(state.clone(), symbol.clone())) {
-                        let next_block = partition.iter().find(|b| b.contains(next_state)).unwrap();
-                        let next_representative = next_block.iter().next().unwrap();
-                        minimized.transitions.insert((representative.clone(), symbol.clone()), next_representative.clone());
-                    }
-                }
+                state_mapping.insert(state.clone(), representative.clone());
             }
         }
     
-        if minimized.start_states.is_empty() {
-            if let Some(first_representative) = minimized.states.difference(&minimized.terminal_states).cloned().next() {
-                minimized.start_states.insert(first_representative.clone());
+        // Create transitions for minimized automaton
+        for ((from, symbol), to) in &self.transitions {
+            if let (Some(from_rep), Some(to_rep)) = (state_mapping.get(from), state_mapping.get(to)) {
+                minimized.transitions.insert(
+                    (from_rep.clone(), symbol.clone()),
+                    to_rep.clone()
+                );
             }
         }
     
         minimized
     }
-    
+
     fn is_minimized(&self) -> bool {
-        *self == self.minimize()
+        let minimized = self.minimize();
+        self.states.len() == minimized.states.len()
     }
-
-    #[doc = r"*  Check if an input has more than one transition *"]
-    fn is_deterministic(&self) -> bool {
-        let mut transition_count = HashMap::new();
-
-        for ((state, symbol), _) in &self.transitions {
-            let key = (state.clone(), symbol.clone());
-            let count = transition_count.entry(key).or_insert(0);
-            *count += 1;
-
-            if *count > 1 {
-                return false;
-            }
-        }
-
-        true
-    }
-
-    
-    fn ndfa_to_dfa(&self) -> Automaton {
-        let mut dfa = Automaton::new();
-        dfa.alphabet = self.alphabet.clone();
-
-        // Track processed states and their mappings
-        let mut state_counter = 0;
-        let mut processed_states: Vec<BTreeSet<String>> = Vec::new();
-        let mut state_mapping: HashMap<String, BTreeSet<String>> = HashMap::new();
-        let mut to_process: VecDeque<BTreeSet<String>> = VecDeque::new();
-
-        // Initialize with start states
-        let start_set: BTreeSet<String> = self.start_states.iter().cloned().collect();
-        processed_states.push(start_set.clone());
-        let start_name = format!("q{}", state_counter);
-        state_mapping.insert(start_name.clone(), start_set.clone());
-        dfa.states.insert(start_name.clone());
-        dfa.start_states.insert(start_name);
-        to_process.push_back(start_set);
-
-        // Process states until queue is empty
-        while let Some(current_states) = to_process.pop_front() {
-            let current_name = state_mapping
-                .iter()
-                .find(|(_, set)| **set == current_states)
-                .unwrap()
-                .0
-                .clone();
-
-            // Check if current set contains any terminal states
-            if current_states.iter().any(|s| self.terminal_states.contains(s)) {
-                dfa.terminal_states.insert(current_name.clone());
-            }
-
-            // Process each symbol
-            for symbol in &self.alphabet {
-                // Compute next states
-                let mut next_states = BTreeSet::new();
-                for state in &current_states {
-                    if let Some(next_state) = self.transitions.get(&(state.clone(), symbol.clone())) {
-                        next_states.insert(next_state.clone());
-                    }
-                }
-
-                if !next_states.is_empty() {
-                    let next_name = if !processed_states.contains(&next_states) {
-                        // New state set discovered
-                        state_counter += 1;
-                        let new_name = format!("q{}", state_counter);
-                        processed_states.push(next_states.clone());
-                        state_mapping.insert(new_name.clone(), next_states.clone());
-                        dfa.states.insert(new_name.clone());
-                        to_process.push_back(next_states);
-                        new_name
-                    } else {
-                        // Find existing state name
-                        state_mapping
-                            .iter()
-                            .find(|(_, set)| **set == next_states)
-                            .unwrap()
-                            .0
-                            .clone()
-                    };
-
-                    // Add transition
-                    dfa.transitions.insert(
-                        (current_name.clone(), symbol.clone()),
-                        next_name
-                    );
-                }
-            }
-        }
-
-        dfa
-    }
-    
 }
 
 impl fmt::Display for Automaton {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "States: {:?}\nAlphabet: {:?}\nStart States: {:?}\nTerminal States: {:?}\nTransitions: {:?}", 
-               self.states, self.alphabet, self.start_states, self.terminal_states, self.transitions)
+        write!(f, "States: {:?}\nAlphabet: {:?}\nStart State: {}\nTerminal States: {:?}\nTransitions: {:?}", 
+               self.states, self.alphabet, self.start_state, self.terminal_states, self.transitions)
     }
 }
 
 impl PartialEq for Automaton {
     fn eq(&self, other: &Self) -> bool {
-        let mut self_copy = self.clone();
-        let mut other_copy = other.clone();
-        self_copy.to_complete_automaton();
-        other_copy.to_complete_automaton();
-        let mut table: Vec<(String, String)> = vec![(self_copy.start_states.iter().next().unwrap().clone(), 
-                                                    other_copy.start_states.iter().next().unwrap().clone())];
-        if self_copy.terminal_states.contains(&table[0].0) != other_copy.terminal_states.contains(&table[0].1) {
+        if self.alphabet != other.alphabet {
             return false;
         }
-        let mut table_index = 0;
-        while table_index < table.len() {
-            
-            let (q, q_prime) = &table[table_index].clone();
-            table_index += 1;
-            for a in &self_copy.alphabet {
-                let next_q = self_copy.transitions.get(&(q.clone(), a.clone()));
-                let next_q_prime = other_copy.transitions.get(&(q_prime.clone(), a.clone()));
-                if let (Some(next_q), Some(next_q_prime)) = (next_q, next_q_prime) {
-                    if self_copy.terminal_states.contains(next_q) != other_copy.terminal_states.contains(next_q_prime) {
-                        return false;
-                    }
 
-                    if !table.contains(&(next_q.clone(), next_q_prime.clone())) {
-                        table.push((next_q.clone(), next_q_prime.clone()));
+        let mut self_complete = self.clone().to_complete_automaton();
+        let mut other_complete = other.clone().to_complete_automaton();
+
+        let mut state_pairs = vec![(self_complete.start_state.clone(), other_complete.start_state.clone())];
+        let mut visited_pairs = HashSet::new();
+        let mut index = 0;
+
+        while index < state_pairs.len() {
+            let (q1, q2) = state_pairs[index].clone();
+            index += 1;
+
+            // Check if states are equivalent regarding acceptance
+            if self_complete.terminal_states.contains(&q1) != other_complete.terminal_states.contains(&q2) {
+                return false;
+            }
+
+            // Add pair to visited
+            visited_pairs.insert((q1.clone(), q2.clone()));
+
+            // Check transitions for each symbol
+            for symbol in &self_complete.alphabet {
+                let next_q1 = self_complete.transitions.get(&(q1.clone(), symbol.clone())).cloned();
+                let next_q2 = other_complete.transitions.get(&(q2.clone(), symbol.clone())).cloned();
+
+                match (next_q1, next_q2) {
+                    (Some(s1), Some(s2)) => {
+                        let pair = (s1.clone(), s2.clone());
+                        if !visited_pairs.contains(&pair) {
+                            state_pairs.push(pair);
+                        }
                     }
-                } else {
-                    return false;
+                    _ => return false,
                 }
             }
         }
-                                                
+
         true
     }
 }
-//ndva->dva:3-aspdf
 
 fn main() -> io::Result<()> {
-    let mut automaton_1 = Automaton::new();
+    let mut automaton = Automaton::new();
+    automaton.build_from_file("resources/form_I.B.1_a1.txt")?;
 
-    automaton_1.build_from_file("resources/test.txt")?;
-    println!("{}",automaton_1);
-    if automaton_1.is_deterministic() {
-        println!("hellyeah");
-    }
-    automaton_1.write_dot_code("b_4_1.dot")?;
-    println!("{}",automaton_1.is_deterministic());
-    let aut2 = automaton_1.ndfa_to_dfa();
-    aut2.write_dot_code("b_4_1_2.dot")?;
-    if automaton_1 == aut2 {
-        println!("jah");
-    }
-    //println!("{}\n{}", automaton_1.is_deterministic(), aut2.is_deterministic());
+    let mut automaton2 = Automaton::new();
+    automaton2.build_from_file("resources/form_I.B.1_a2.txt")?;
     
-
-
+    
+    automaton.write_dot_code("b_4_1.dot")?;
+    
+    let minimized = automaton.minimize();
+    automaton2.write_dot_code("b_4_1_2.dot")?;
+    
+    if automaton2 == automaton {
+        println!("Automaton is already minimal!");
+    }
+    
     Ok(())
 }
