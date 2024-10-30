@@ -3,5 +3,12 @@
 version = 3
 
 [[package]]
-name = "automaton_equivalency"
+name = "automata_lib"
 version = "0.1.0"
+
+[[package]]
+name = "automaton"
+version = "0.1.0"
+dependencies = [
+ "automata_lib",
+]

@@ -1,0 +1,12 @@
+digraph PdAutomaton {
+	rankdir=LR;
+	node [shape=circle];
+	start [shape=point];
+	start -> p;
+	r [shape=doublecircle];
+	p -> p [label="a| 0-> 0 0"];
+	p -> r [label="eps| 0-> eps"];
+	p -> q [label="eps| 0-> 0"];
+	q -> q [label="b| 0-> eps"];
+	q -> r [label="eps| 0-> eps"];
+}
