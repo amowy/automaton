@@ -1,7 +1,6 @@
 [package]
-name = "automaton"
+name = "automata_lib"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-automata_lib = {path = "automata_lib"}
