@@ -1,0 +1,12 @@
+p q r s
+a b
+p
+q r s
+p a q
+p b r
+q a q
+q b r
+r a p
+r b s
+s a q
+s b r

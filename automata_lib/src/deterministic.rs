@@ -170,8 +170,14 @@ impl DeterministicAutomaton {
         minimized
     }
     
-    pub fn is_minimized(&self) -> bool {
-        *self == self.minimize()
+    pub fn is_minimized(&self) -> (bool, DeterministicAutomaton) {
+        let minim = self.minimize();
+        if format!("{:?}", minim).len() == format!("{:?}",self).len() {
+            return (true, self.clone());
+        }
+        else {
+            return (false, minim);
+        }
     }
 }
 

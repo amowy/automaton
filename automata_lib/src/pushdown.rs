@@ -66,14 +66,14 @@ impl PushdownAutomaton {
 
         // Accept if we're in a terminal state 
         // ez akkor ha megis el kell fogyjanak a karakterjeink
-        //if input_chars.is_empty() && self.terminal_states.contains(current_state) {
-        if self.terminal_states.contains(current_state) {
+        if input_chars.is_empty() && (self.terminal_states.contains(current_state) || stack.is_empty())  {
+        //if self.terminal_states.contains(current_state) {
             return true;
         }
 
         // Can't proceed if stack is empty
         if stack.is_empty() {
-            return true;
+            return false;
         }
 
         let current_input = input_chars.first().map_or("eps", String::as_str);
@@ -111,13 +111,10 @@ impl PushdownAutomaton {
         let file = File::open(file_name)?;
         for line in io::BufReader::new(file).lines() {
             let line = line?;
-            let trimmed = line.trim();
-            if !trimmed.is_empty() {
-                if self.accepts(trimmed) {
-                    println!("{} accepted", trimmed);
-                } else {
-                    println!("{} declined", trimmed);
-                }
+            if self.accepts(&line) {
+                println!("{} accepted", &line);
+            } else {
+                println!("{} declined", &line);
             }
         }
         Ok(())
