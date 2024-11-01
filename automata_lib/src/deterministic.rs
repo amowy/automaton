@@ -3,6 +3,7 @@
  * gmim2236
  * 1.B.01
  * 1.B.03
+ * 1.A.03
  * pda
  */
 
@@ -55,6 +56,9 @@ impl DeterministicAutomaton {
         self.clone()
     }
 
+    #[doc = r"* Gyorgy Matyas
+    * gmim2236
+    * 1.A.03"]
     pub fn remove_unreachable_states(&mut self) {
         let mut reachable_nodes: HashSet<String> = HashSet::new();
         let mut productive_nodes: Vec<String> = Vec::new();
@@ -112,7 +116,8 @@ impl DeterministicAutomaton {
     
             for c in &self.alphabet {
                 let x: HashSet<String> = self.states.iter()
-                    .filter(|&state| self.transitions.get(&(state.clone(), c.clone())).map_or(false, |next| a.contains(next)))
+                    .filter(|&state| self.transitions.get(&(state.clone(), c.clone()))
+                    .map_or(false, |next| a.contains(next)))
                     .cloned()
                     .collect();
 
@@ -165,7 +170,8 @@ impl DeterministicAutomaton {
             for state in block {
                 for symbol in &self.alphabet {
                     if let Some(next_state) = self.transitions.get(&(state.clone(), symbol.clone())) {
-                        let next_block = partition.iter().find(|b| b.contains(next_state)).unwrap();
+                        let next_block = partition.iter()
+                            .find(|b| b.contains(next_state)).unwrap();
                         let next_representative = next_block.iter().next().unwrap();
                         minimized.transitions.insert((representative.clone(), symbol.clone()), next_representative.clone());
                     }
@@ -199,7 +205,8 @@ impl Automaton for DeterministicAutomaton {
 
     fn build_dot_code(&self) -> String {
         let mut out_dot_code = String::from(
-            "digraph G {\n    ranksep=0.5;\n    nodesep=0.5;\n    rankdir=LR;\n    node [shape=\"circle\", fontsize=\"16\"];\n    fontsize=\"10\";\n    compound=true;\n\n"
+            "digraph G {\n    ranksep=0.5;\n    nodesep=0.5;\n    rankdir=LR;\n    node [shape=\"circle\",
+             fontsize=\"16\"];\n    fontsize=\"10\";\n    compound=true;\n\n"
         );
 
         for state in &self.states {

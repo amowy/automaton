@@ -1,8 +1,43 @@
 use automata_lib::{self, NonDeterministicAutomaton, PushdownAutomaton, Automaton, DeterministicAutomaton};
-use std::io::Result;
+use std::fs::File;
+use std::io::{self, BufRead, BufReader};
+use std::path::Path;
 
+fn read_file(file_name: &str) -> io::Result<Vec<String>> {
+    let path = Path::new(file_name);
+    let file = File::open(&path)?;
+    let lines = BufReader::new(file).lines().collect::<Result<_, _>>().expect("couldnt read file");
+    Ok(lines)
+}
 
-fn fel_01() -> Result<()>{
+fn fel_1_a03() -> io::Result<()>{
+    println!("fel I_a_03");
+    let mut ndfa = NonDeterministicAutomaton::new();
+    ndfa.build_from_file("resources/1.A.3/form_I.A.3.txt")?;
+    ndfa.write_dot_code("output/1.A.3/ndfa1.dot")?;
+    ndfa.remove_unreachable_states();
+    ndfa.write_dot_code("output/1.A.3/ndfa2.dot")?;
+    
+
+    Ok(())
+}
+
+fn fel_1_a04() -> io::Result<()>{
+    println!("fel I_a_04");
+    let mut ndfa = NonDeterministicAutomaton::new();
+    ndfa.build_from_file("resources/1.A.4/form_I.A.4.txt")?;
+    let mut words_list = read_file("resources/1.A.4/form_I.A.4_szavak.txt").unwrap();
+    println!("A");
+    ndfa.try_all_words(words_list);
+    ndfa.build_from_file("resources/1.A.4/form_I.A.4_2.txt")?;
+    words_list = read_file("resources/1.A.4/form_I.A.4_2_szavak.txt").unwrap();
+    println!("B");
+    ndfa.try_all_words(words_list);
+
+    Ok(())
+}
+
+fn fel_01() -> io::Result<()>{
     println!("fel 01");
     let mut dfa1 = DeterministicAutomaton::new();
     let mut dfa2 = DeterministicAutomaton::new();
@@ -42,7 +77,7 @@ fn fel_01() -> Result<()>{
     Ok(())
 }
 
-fn fel_02() -> Result<()>{
+fn fel_02() -> io::Result<()>{
     println!("fel 02");
     println!("A");
     let mut pda = PushdownAutomaton::new();
@@ -58,7 +93,7 @@ fn fel_02() -> Result<()>{
     Ok(())
 }
 
-fn fel_03() -> Result<()>{
+fn fel_03() -> io::Result<()>{
     println!("fel 03");
     let mut dfa = DeterministicAutomaton::new();
     println!("A");
@@ -88,7 +123,7 @@ fn fel_03() -> Result<()>{
     Ok(())
 }
 
-fn fel_04() -> Result<()>{
+fn fel_04() -> io::Result<()>{
     println!("fel 04");
     let mut ndfa = NonDeterministicAutomaton::new();
     println!("A");
@@ -108,13 +143,21 @@ fn fel_04() -> Result<()>{
     Ok(())
 }
 
-fn main() -> Result<()> {
+fn main() -> io::Result<()> {
+    fel_1_a03()?;
+    println!();
+
+    fel_1_a04()?;
+    println!();
+
     fel_01()?;
     println!();
 
     fel_02()?;
     println!();
+
     fel_03()?;
     println!();
+
     fel_04()
 }

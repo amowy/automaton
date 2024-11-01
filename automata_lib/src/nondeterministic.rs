@@ -2,7 +2,9 @@
  * Gyorgy Matyas
  * gmim2236
  * 1.B.04
- * pda
+ * 1.A.03 (+)
+ * 1.A.04 (+)
+ * ndfa
  */
 
 use std::collections::{HashMap, HashSet, VecDeque, BTreeSet};
@@ -110,6 +112,115 @@ impl NonDeterministicAutomaton {
         dfa.alphabet = self.alphabet.clone();
 
         dfa
+    }
+
+    #[doc = r"* Gyorgy Matyas
+    * gmim2236
+    * 1.A.04"]
+    pub fn accepts(&self, word: &str) -> bool {
+        fn accepts_helper(
+            current_states: &HashSet<String>,
+            terminal_states: &HashSet<String>,
+            transitions: &HashMap<(String, String), HashSet<String>>,
+            word: &str,
+            index: usize,
+            iteration: usize,
+        ) -> bool {
+            const MAX_ITERATION: usize = 1000;
+            if index == word.len() {
+                return current_states.iter().any(|state| terminal_states.contains(state));
+            }
+
+            if iteration == MAX_ITERATION {
+                return false;
+            }
+
+            let symbol = &word[index..index + 1];
+            let mut next_states = HashSet::new();
+            let mut step = 1;
+
+            for state in current_states {
+                if let Some(next) = transitions.get(&(state.clone(), symbol.to_string())) {
+                    next_states.extend(next.clone());
+                }
+                if let Some(epsilon_next) = transitions.get(&(state.clone(), "eps".to_string())) {
+                    next_states.extend(epsilon_next.clone());
+                    step = 0;
+                }
+            }
+
+            if next_states.is_empty() {
+                return false;
+            }
+
+            accepts_helper(&next_states, terminal_states, transitions, word, index + step, iteration + 1)
+        }
+
+        let start_set = &self.start_states;
+        let terminal_set = &self.terminal_states;
+
+        accepts_helper(start_set, terminal_set, &self.transitions, word, 0, 0)
+    }
+
+    pub fn try_all_words(&self, words_list: Vec<String>) {
+        for word in &words_list {
+            if self.accepts(word) {
+                println!("{:?} accepted", word);
+            } else {
+                println!("{:?} declined", word);
+            }
+        }
+    }
+
+    pub fn remove_unreachable_states(&mut self) {
+        let mut reachable_nodes: HashSet<String> = HashSet::new();
+        let mut productive_nodes: HashSet<String> = HashSet::new();
+        let mut visited: HashSet<String> = HashSet::new();
+        let mut queue = VecDeque::new();
+
+        // marking all start states as reachable
+        for start_state in &self.start_states {
+            queue.push_back(start_state.clone());
+            visited.insert(start_state.clone());
+        }
+
+        // find all reachable nodes
+        while let Some(current_node) = queue.pop_front() {
+            reachable_nodes.insert(current_node.clone());
+            
+            for ((from, _), to_states) in &self.transitions {
+                if from == &current_node {
+                    for to in to_states {
+                        if visited.insert(to.clone()) {
+                            queue.push_back(to.clone());
+                        }
+                    }
+                }
+            }
+        }
+
+        // second pass: reverse bfs to seatch for the productive nodes, knowing the reachable nodes
+        visited.clear();
+        for terminal_state in &self.terminal_states {
+            queue.push_back(terminal_state.clone());
+            visited.insert(terminal_state.clone());
+        }
+
+        while let Some(current_node) = queue.pop_front() {
+            if reachable_nodes.contains(&current_node) {
+                productive_nodes.insert(current_node.clone());
+            }
+            for ((from, _), to_states) in &self.transitions {
+                if to_states.contains(&current_node) && visited.insert(from.clone()) {
+                    queue.push_back(from.clone());
+                }
+            }
+        }
+
+        // include only reachable and productive
+        self.states = &reachable_nodes & &productive_nodes;
+        self.terminal_states.retain(|state| productive_nodes.contains(state));
+        self.transitions.retain(|(from, _), to_states| reachable_nodes.contains(from) && to_states.iter().all(|to| productive_nodes.contains(to)));
     }
 }
 
