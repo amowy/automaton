@@ -1,3 +1,11 @@
+/**
+ * Gyorgy Matyas
+ * gmim2236
+ * 1.B.01
+ * 1.B.03
+ * pda
+ */
+
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fmt;
 use std::fs::File;
@@ -86,7 +94,11 @@ impl DeterministicAutomaton {
         self.terminal_states = productive_nodes.into_iter().collect();
         self.transitions.retain(|(from, _), _| reachable_nodes.contains(from));
     }
-
+    
+    #[doc = r"* Gyorgy Matyas
+    * gmim2236
+    * 1.B.03
+    * pda"]
     pub fn minimize(&self) -> DeterministicAutomaton {
         let mut partition: Vec<HashSet<String>> = vec![
             self.terminal_states.clone(), 
@@ -169,16 +181,18 @@ impl DeterministicAutomaton {
     
         minimized
     }
-    
+
     pub fn is_minimized(&self) -> (bool, DeterministicAutomaton) {
         let minim = self.minimize();
-        if format!("{:?}", minim).len() == format!("{:?}",self).len() {
+        if minim.transitions.eq(&self.transitions) && minim.states.eq(&self.states) 
+            && minim.terminal_states.eq(&self.terminal_states) && minim.alphabet.eq(&self.alphabet) {
             return (true, self.clone());
         }
         else {
             return (false, minim);
         }
     }
+    
 }
 
 impl Automaton for DeterministicAutomaton {
@@ -254,6 +268,10 @@ impl fmt::Display for DeterministicAutomaton {
     }
 }
 
+#[doc = r"* Gyorgy Matyas
+    * gmim2236
+    * 1.B.01
+    * pda"]
 impl PartialEq for DeterministicAutomaton {
     fn eq(&self, other: &Self) -> bool {
         let mut self_copy = self.clone();

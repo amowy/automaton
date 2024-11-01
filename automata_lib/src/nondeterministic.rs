@@ -1,3 +1,10 @@
+/**
+ * Gyorgy Matyas
+ * gmim2236
+ * 1.B.04
+ * pda
+ */
+
 use std::collections::{HashMap, HashSet, VecDeque, BTreeSet};
 use std::fmt;
 use std::fs::File;
@@ -34,6 +41,10 @@ impl NonDeterministicAutomaton {
             .insert(to);
     }
 
+    #[doc = r"* Gyorgy Matyas
+    * gmim2236
+    * 1.B.04
+    * pda"]
     pub fn to_deterministic(&self) -> DeterministicAutomaton{
         let mut dfa = DeterministicAutomaton::new();
         let transition_map = self.transitions.clone();

@@ -1,3 +1,10 @@
+/**
+ * Gyorgy Matyas
+ * gmim2236
+ * 1.B.02
+ * pda
+ */
+
 use std::collections::HashSet;
 use std::fs::File;
 use std::io::{self, BufRead};
@@ -39,6 +46,10 @@ impl PushdownAutomaton {
         }
     }
 
+    #[doc = r"* Gyorgy Matyas
+    * gmim2236
+    * 1.B.02
+    * pda"]
     pub fn accepts(&self, input: &str) -> bool {
         let stack = vec![self.stack_start_symbol.clone()];
         let input_chars: Vec<String> = input.chars().map(String::from).collect();
@@ -70,7 +81,7 @@ impl PushdownAutomaton {
             return true;
         }
 
-        // Can't proceed if stack is empty
+        // cant proceed if stack is empty
         if stack.is_empty() {
             return false;
         }
