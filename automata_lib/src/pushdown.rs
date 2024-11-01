@@ -43,7 +43,7 @@ impl PushdownAutomaton {
         let stack = vec![self.stack_start_symbol.clone()];
         let input_chars: Vec<String> = input.chars().map(String::from).collect();
         
-        // Check if input contains valid symbols
+        // check for valid characters
         if !input_chars.iter().all(|c| self.input_symbols.contains(c)) {
             return false;
         }
@@ -64,8 +64,7 @@ impl PushdownAutomaton {
             return false;
         }
 
-        // Accept if we're in a terminal state 
-        // ez akkor ha megis el kell fogyjanak a karakterjeink
+        // accept condition
         if input_chars.is_empty() && (self.terminal_states.contains(current_state) || stack.is_empty())  {
         //if self.terminal_states.contains(current_state) {
             return true;
@@ -84,7 +83,7 @@ impl PushdownAutomaton {
                 && (transition.input_symbol == current_input || transition.input_symbol == "eps")
                 && transition.stack_symbol == *current_stack_top
             {
-                // Prepare new stack
+                // new stack
                 let mut new_stack = stack[..stack.len()-1].to_vec();
                 for symbol in transition.new_stack_symbols.iter().rev() {
                     if symbol != "eps" {
@@ -92,7 +91,7 @@ impl PushdownAutomaton {
                     }
                 }
 
-                // Prepare new input
+                //  new input
                 let new_input = if transition.input_symbol != "eps" && !input_chars.is_empty() {
                     &input_chars[1..]
                 } else {
@@ -125,21 +124,17 @@ impl Automaton for PushdownAutomaton {
     fn build_dot_code(&self) -> String {
         let mut dot_content = String::new();
 
-        // Initialize the DOT graph
         dot_content.push_str("digraph PdAutomaton {\n");
         dot_content.push_str("\trankdir=LR;\n");
         dot_content.push_str("\tnode [shape=circle];\n");
 
-        // Mark the start state with a different shape
         dot_content.push_str("\tstart [shape=point];\n");
         dot_content.push_str(&format!("\tstart -> {};\n", self.start_state));
 
-        // Mark terminal states with double-circles
         for terminal_state in &self.terminal_states {
             dot_content.push_str(&format!("\t{} [shape=doublecircle];\n", terminal_state));
         }
 
-        // Add transitions with proper escaping for DOT format
         for transition in &self.transitions {
             let stack_symbols = transition.new_stack_symbols.join(" ");
             dot_content.push_str(&format!(
@@ -192,14 +187,6 @@ impl Automaton for PushdownAutomaton {
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidData,
                     format!("Invalid transition format: {}", line),
-                ));
-            }
-            
-            // Validate transition components
-            if !self.states.contains(&parts[0]) || !self.states.contains(&parts[parts.len()-1]) {
-                return Err(io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    format!("Invalid state in transition: {}", line),
                 ));
             }
 
